@@ -12,6 +12,7 @@ start_build() {
     clear
     zig build run &
     BUILD_PID=$!
+    echo "--------------------- BUILD END ---------------------"
 }
 
 trap terminate_build INT
