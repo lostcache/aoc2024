@@ -3,6 +3,7 @@ const utils = @import("../utils.zig");
 
 const StrArray = std.ArrayList([]const u8);
 const Cache = std.StringHashMap(void);
+const DFSCache = std.StringHashMap(usize);
 
 fn parseInput(buffer: *[]const u8, patterns: *StrArray, designs: *StrArray) !void {
     var sections = std.mem.split(u8, buffer.*, "\n\n");
@@ -22,13 +23,6 @@ fn parseInput(buffer: *[]const u8, patterns: *StrArray, designs: *StrArray) !voi
         try designs.append(design);
     }
 }
-
-// fn getStrFromPatternArr(patternArr: *const StrArray, alloc: *std.mem.Allocator) ![]const u8 {
-//     if (patternArr.items.len == 0) return "";
-//
-//     // Use std.mem.concat to concatenate all strings in patternArr.items
-//     return try std.mem.concat(alloc.*, u8, patternArr.items);
-// }
 
 fn compareByLen(_: void, a: []const u8, b: []const u8) std.math.Order {
     if (a.len < b.len) return .gt;
@@ -71,6 +65,32 @@ fn checkIfPossible(design: *const []const u8, patterns: *StrArray, cache: *Cache
     return false;
 }
 
+fn countPossiblePathsDFS(design: *const []const u8, patterns: *StrArray, cache: *DFSCache, alloc: *std.mem.Allocator, index: usize) !usize {
+    const maybeVisited = cache.get(design.*[index..]);
+    if (maybeVisited != null) return maybeVisited.?;
+
+    if (index > design.len) {
+        _ = try cache.put(design.*[index..], 0);
+        return 0;
+    }
+
+    if (index == design.len) {
+        _ = try cache.put(design.*[index..], 1);
+        return 1;
+    }
+
+    var pathCount: usize = 0;
+    for (patterns.items) |pattern| {
+        if (std.mem.startsWith(u8, design.*[index..], pattern)) {
+            pathCount += try countPossiblePathsDFS(design, patterns, cache, alloc, index + pattern.len);
+        }
+    }
+
+    _ = try cache.put(design.*[index..], pathCount);
+
+    return pathCount;
+}
+
 pub fn day19() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -90,7 +110,6 @@ pub fn day19() !void {
     try parseInput(&buffer, &patterns, &designs);
 
     var possibleDesignCounter: usize = 0;
-
     for (designs.items) |design| {
         var iterArena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer iterArena.deinit();
@@ -106,4 +125,18 @@ pub fn day19() !void {
     }
 
     std.debug.print("Part1: {}\n", .{possibleDesignCounter});
+
+    var allPossiblePaths: usize = 0;
+    for (designs.items) |design| {
+        var iterArena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer iterArena.deinit();
+
+        var iterAlloc = iterArena.allocator();
+        var cache = DFSCache.init(iterAlloc);
+        defer cache.deinit();
+
+        allPossiblePaths += try countPossiblePathsDFS(&design, &patterns, &cache, &iterAlloc, 0);
+    }
+
+    std.debug.print("Part2: {}\n", .{allPossiblePaths});
 }
