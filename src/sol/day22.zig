@@ -22,7 +22,12 @@ fn getSecret(num: i64) i64 {
     return initialNum;
 }
 
-fn processData(num: i64, diffArr: *std.ArrayList(i8), seqMap: *std.AutoHashMap([4]i8, usize)) !void {
+fn processData(
+    num: i64,
+    diffArr: *std.ArrayList(i8),
+    seqHeap: *std.PriorityQueue([5]i8, void, compareFn),
+    seqMap: *std.AutoHashMap([4]i8, i8),
+) !void {
     var currNum = num;
     var currNumOnesDigit = @mod(currNum, 10);
     for (0..2000) |i| {
@@ -32,11 +37,38 @@ fn processData(num: i64, diffArr: *std.ArrayList(i8), seqMap: *std.AutoHashMap([
         currNum = secret;
         currNumOnesDigit = secretOnesDigit;
 
-        if (@mod(i + 1, 4) == 0) {
-            const seq = .{ diffArr.items[i - 3], diffArr.items[i - 2], diffArr.items[i - 1], diffArr.items[i] };
-            try seqMap.put(seq, i);
+        if (i > 2) {
+            if (seqMap.get(.{
+                diffArr.items[i - 3],
+                diffArr.items[i - 2],
+                diffArr.items[i - 1],
+                diffArr.items[i],
+            }) == null) {
+                try seqMap.put(
+                    .{
+                        diffArr.items[i - 3],
+                        diffArr.items[i - 2],
+                        diffArr.items[i - 1],
+                        diffArr.items[i],
+                    },
+                    @as(i8, @intCast(secretOnesDigit)),
+                );
+            }
+            try seqHeap.add(.{
+                diffArr.items[i - 3],
+                diffArr.items[i - 2],
+                diffArr.items[i - 1],
+                diffArr.items[i],
+                @as(i8, @intCast(secretOnesDigit)),
+            });
         }
     }
+}
+
+fn compareFn(_: void, a: [5]i8, b: [5]i8) std.math.Order {
+    if (a[4] < b[4]) return .gt;
+    if (a[4] > b[4]) return .lt;
+    return .eq;
 }
 
 pub fn day22() !void {
@@ -52,12 +84,38 @@ pub fn day22() !void {
     try parseInput(&buffer, &nums);
 
     var diffData = try std.ArrayList(std.ArrayList(i8)).initCapacity(alloc, 1800);
-    var seqMaps = try std.ArrayList(std.AutoHashMap([4]i8, usize)).initCapacity(alloc, 1800);
+    var seqHeaps = try std.ArrayList(std.PriorityQueue([5]i8, void, compareFn)).initCapacity(alloc, 1800);
+    var seqMaps = try std.ArrayList(std.AutoHashMap([4]i8, i8)).initCapacity(alloc, 1800);
     for (nums.items) |num| {
         var diffArr = try std.ArrayList(i8).initCapacity(alloc, 2000);
-        var seqMap = std.AutoHashMap([4]i8, usize).init(alloc);
-        try processData(num, &diffArr, &seqMap);
+        var seqHeap = std.PriorityQueue([5]i8, void, compareFn).init(alloc, {});
+        var seqMap = std.AutoHashMap([4]i8, i8).init(alloc);
+        try processData(num, &diffArr, &seqHeap, &seqMap);
         try diffData.append(diffArr);
+        try seqHeaps.append(seqHeap);
         try seqMaps.append(seqMap);
     }
+
+    const nBuyers = diffData.items.len;
+
+    var maxPrice: usize = 0;
+    for (0..nBuyers) |i| {
+        var localMaxPrice: usize = 0;
+        var seqHeap = seqHeaps.items[i];
+        if (seqHeap.removeOrNull()) |maxPriceSeq| {
+            const seq = .{ maxPriceSeq[0], maxPriceSeq[1], maxPriceSeq[2], maxPriceSeq[3] };
+            for (0..nBuyers) |j| {
+                const seqMap = seqMaps.items[j];
+                const maybePriceOfSeqForBuyer = seqMap.get(seq);
+                const priceOfSeqForBuyer = if (maybePriceOfSeqForBuyer != null) maybePriceOfSeqForBuyer.? else 0;
+                localMaxPrice += @as(usize, @intCast(priceOfSeqForBuyer));
+            }
+        }
+
+        if (localMaxPrice > maxPrice) {
+            maxPrice = localMaxPrice;
+        }
+    }
+
+    std.debug.print("Part2: {any}\n", .{maxPrice});
 }
