@@ -88,6 +88,59 @@ fn getAllThreeNodeCycles(
     }
 }
 
+fn intersection(
+    setA: *const std.StringHashMap(void),
+    setB: *const std.StringHashMap(void),
+    intersectionSet: *std.StringHashMap(void),
+) !void {
+    var iterA = setA.iterator();
+    while (iterA.next()) |entry| {
+        const key = entry.key_ptr.*;
+        if (setB.get(key) != null) {
+            try intersectionSet.put(key, {});
+        }
+    }
+}
+
+fn bronKerbosche(
+    currClique: *std.StringHashMap(void),
+    candidates: *std.StringHashMap(void),
+    processed: *std.StringHashMap(void),
+    cliques: *std.ArrayList(std.StringHashMap(void)),
+    adjList: *AdjList,
+    currMax: *usize,
+) !void {
+    if (candidates.count() == 0 and processed.count() == 0) {
+        if (currClique.count() > currMax.*) {
+            currMax.* = currClique.count();
+            try cliques.append(try currClique.clone());
+        }
+        return;
+    }
+
+    var candidateIter = candidates.iterator();
+    while (candidateIter.next()) |candidateEntry| {
+        const candidate = candidateEntry.key_ptr.*;
+
+        var newClique = try currClique.clone();
+        try newClique.put(candidate, {});
+
+        const maybeNei = adjList.get(candidate);
+        const nei = if (maybeNei != null) maybeNei.? else std.StringHashMap(void).init(adjList.allocator);
+
+        var newCandidates = std.StringHashMap(void).init(candidates.allocator);
+        try intersection(candidates, &nei, &newCandidates);
+
+        var newProcessed = std.StringHashMap(void).init(processed.allocator);
+        try intersection(processed, &nei, &newProcessed);
+
+        try bronKerbosche(&newClique, &newCandidates, &newProcessed, cliques, adjList, currMax);
+
+        _ = candidates.remove(candidate);
+        try processed.put(candidate, {});
+    }
+}
+
 pub fn day23() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -118,4 +171,31 @@ pub fn day23() !void {
     }
 
     std.debug.print("part1: {}\n", .{beginsWitht});
+
+    var nodeIter = adjList.iterator();
+    var nodes = std.StringHashMap(void).init(alloc);
+    while (nodeIter.next()) |nodeEntry| {
+        const node = nodeEntry.key_ptr.*;
+        try nodes.put(node, {});
+    }
+
+    var currMaxClique: usize = 0;
+    var candidates = try nodes.clone();
+    var cliques = std.ArrayList(std.StringHashMap(void)).init(alloc);
+    var processed = std.StringHashMap(void).init(alloc);
+    var currClique = std.StringHashMap(void).init(alloc);
+    try bronKerbosche(&currClique, &candidates, &processed, &cliques, &adjList, &currMaxClique);
+
+    for (cliques.items) |clique| {
+        var cliqueIter = clique.iterator();
+        var nodeArr = std.ArrayList([]const u8).init(alloc);
+        while (cliqueIter.next()) |entry| {
+            const key = entry.key_ptr.*;
+            try nodeArr.append(key);
+        }
+        std.mem.sort([]const u8, nodeArr.items, {}, lessThanFn);
+        std.debug.print("clique: {s}\n", .{nodeArr.items});
+    }
+
+    std.debug.print("---end---\n", .{});
 }
